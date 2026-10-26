@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aastha Care - Elder Health & Safety Companion</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --font-scale: 1;
+    }
+    body {
+      font-size: calc(18px * var(--font-scale));
+      line-height: 1.6;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    .elder-btn {
+      min-height: 64px;
+      touch-action: manipulation;
+      transition: all 0.15s ease-in-out;
+    }
+    .elder-btn:active {
+      transform: scale(0.98);
+    }
+    .pulse-heart {
+      animation: heartbeat 1.2s infinite;
+    }
+    @keyframes heartbeat {
+      0% { transform: scale(1); }
+      14% { transform: scale(1.15); }
+      28% { transform: scale(1); }
+      42% { transform: scale(1.15); }
+      70% { transform: scale(1); }
+    }
+    /* Keep Leaflet map and controls strictly below the top taskbar / header */
+    #map {
+      z-index: 1 !important;
+      isolation: isolate;
+    }
+    .leaflet-pane {
+      z-index: 2 !important;
+    }
+    .leaflet-top, .leaflet-bottom {
+      z-index: 3 !important;
+    }
+  </style>
+</head>
+<body class="bg-amber-50/40 text-stone-900 min-h-screen pb-16">
+
+  <!-- Top Bar: Elder-friendly accessibility & Emergency SOS (highest z-index so nothing hovers over it) -->
+  <header class="bg-white border-b-2 border-stone-200 sticky top-0 z-[9999] shadow-sm px-4 py-3 sm:px-8">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- Brand & Elder Greeting -->
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white text-2xl shadow-inner font-bold">
+          ❤️
+        </div>
+        <div>
+          <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900">Aastha Care</h1>
+          <p class="text-sm sm:text-base text-stone-600 font-medium">Namaste, Ramesh Ji | <span id="liveClock">10:30 AM</span></p>
+        </div>
+      </div>
+
+      <!-- Accessibility: Text Size & Emergency SOS Button -->
+      <div class="flex items-center gap-3 sm:gap-4 flex-wrap">
+        
+        <!-- Font Size Controls -->
+        <div class="flex items-center bg-stone-100 rounded-xl p-1 border border-stone-300">
+          <span class="text-xs font-semibold px-2 text-stone-500 uppercase">Text</span>
+          <button onclick="changeFontSize(0.9)" class="w-10 h-10 flex items-center justify-center font-bold text-lg rounded-lg hover:bg-white text-stone-700" title="Smaller Text">A-</button>
+          <button onclick="changeFontSize(1.0)" class="w-10 h-10 flex items-center justify-center font-bold text-xl rounded-lg hover:bg-white text-stone-900" title="Default Text">A</button>
+          <button onclick="changeFontSize(1.15)" class="w-10 h-10 flex items-center justify-center font-bold text-2xl rounded-lg hover:bg-white text-stone-900" title="Larger Text">A+</button>
+        </div>
+
+        <!-- BIG ONE-TAP EMERGENCY SOS BUTTON -->
+        <button onclick="triggerEmergencySOS()" class="elder-btn bg-red-600 hover:bg-red-700 text-white font-black text-xl sm:text-2xl px-6 rounded-2xl shadow-lg border-2 border-red-700 flex items-center gap-2">
+          <span class="text-2xl animate-bounce">🚨</span>
+          <span>HELP / SOS</span>
+        </button>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Layout -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-8 mt-6 space-y-8">
+
+    <!-- Quick Audio Reader Banner -->
+    <section class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-3xl p-6 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-4">
+        <div class="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-3xl shrink-0">
+          🔊
+        </div>
+        <div>
+          <h2 class="text-xl sm:text-2xl font-bold">Listen in Hindi or English (सुनिए)</h2>
+          <p class="text-emerald-100 text-base">Press the button and the assistant will read your medicine schedule and health status aloud.</p>
+        </div>
+      </div>
+      <button onclick="readDailySummaryAloud()" class="elder-btn bg-white text-emerald-800 hover:bg-emerald-50 font-bold text-lg px-8 py-3 rounded-2xl shadow-md shrink-0 flex items-center gap-3">
+        <span>▶️ Read Summary Aloud</span>
+      </button>
+    </section>
+
+    <!-- SECTION 1: TODAY'S MEDICINE TIMETABLE (Dawaai Ka Samay) -->
+    <section class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border-2 border-stone-200">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b-2 border-stone-100 gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">💊</span>
+          <div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-stone-900">Today's Medicines (आज की दवाइयां)</h2>
+            <p class="text-stone-600 text-base">Take on time as advised by Dr. Sharma</p>
+          </div>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold px-4 py-2 rounded-2xl text-lg flex items-center gap-2">
+          <span>✓</span>
+          <span id="medProgressText">2 of 3 Taken Today</span>
+        </div>
+      </div>
+
+      <!-- Medicine Cards Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+        
+        <!-- Morning Med -->
+        <div id="med-card-morning" class="rounded-2xl border-2 border-emerald-500 bg-emerald-50/50 p-6 flex flex-col justify-between shadow-sm">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm uppercase tracking-wider font-bold text-emerald-800 bg-emerald-200 px-3 py-1 rounded-full">🌅 Morning (सुबह)</span>
+              <span class="text-lg font-bold text-stone-700">8:00 AM</span>
+            </div>
+            <h3 class="text-xl sm:text-2xl font-bold text-stone-900 mt-2">Amlodipine (5mg)</h3>
+            <p class="text-stone-700 font-medium text-base mt-1">For Blood Pressure • 1 tablet after breakfast</p>
+          </div>
+          <button id="btn-med-morning" onclick="toggleMed('morning')" class="elder-btn mt-6 w-full font-bold text-lg rounded-xl flex items-center justify-center gap-2 bg-emerald-600 text-white shadow">
+            <span>✅</span>
+            <span>TAKEN AT 8:15 AM</span>
+          </button>
+        </div>
+
+        <!-- Afternoon Med -->
+        <div id="med-card-afternoon" class="rounded-2xl border-2 border-emerald-500 bg-emerald-50/50 p-6 flex flex-col justify-between shadow-sm">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm uppercase tracking-wider font-bold text-emerald-800 bg-emerald-200 px-3 py-1 rounded-full">☀️ Afternoon (दोपहर)</span>
+              <span class="text-lg font-bold text-stone-700">1:00 PM</span>
+            </div>
+            <h3 class="text-xl sm:text-2xl font-bold text-stone-900 mt-2">Metformin (500mg)</h3>
+            <p class="text-stone-700 font-medium text-base mt-1">For Blood Sugar • 1 tablet with lunch</p>
+          </div>
+          <button id="btn-med-afternoon" onclick="toggleMed('afternoon')" class="elder-btn mt-6 w-full font-bold text-lg rounded-xl flex items-center justify-center gap-2 bg-emerald-600 text-white shadow">
+            <span>✅</span>
+            <span>TAKEN AT 1:20 PM</span>
+          </button>
+        </div>
+
+        <!-- Night Med (Pending) -->
+        <div id="med-card-night" class="rounded-2xl border-2 border-amber-400 bg-amber-50/60 p-6 flex flex-col justify-between shadow-md">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm uppercase tracking-wider font-bold text-amber-900 bg-amber-200 px-3 py-1 rounded-full">🌙 Night (रात)</span>
+              <span class="text-lg font-bold text-stone-700">9:00 PM</span>
+            </div>
+            <h3 class="text-xl sm:text-2xl font-bold text-stone-900 mt-2">Atorvastatin (10mg)</h3>
+            <p class="text-stone-700 font-medium text-base mt-1">For Heart Health • 1 tablet after dinner</p>
+          </div>
+          <button id="btn-med-night" onclick="toggleMed('night')" class="elder-btn mt-6 w-full font-bold text-xl rounded-xl flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg">
+            <span>👉</span>
+            <span>TAP TO MARK TAKEN</span>
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- SECTION 2: LIVE MEDICAL WATCH VITALS (Heartbeat & Steps) -->
+    <section class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border-2 border-stone-200">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b-2 border-stone-100 gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">⌚</span>
+          <div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-stone-900">Live Watch Vitals (स्मार्टवॉच स्थिति)</h2>
+            <p class="text-stone-600 text-base">Connected to your wrist watch via Bluetooth</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 bg-emerald-100 text-emerald-900 px-4 py-2 rounded-2xl font-bold text-base">
+          <span class="w-3 h-3 rounded-full bg-emerald-600 animate-ping"></span>
+          <span>Live Sync • Battery 88%</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        
+        <!-- Heart Rate Card -->
+        <div class="bg-rose-50 border-2 border-rose-300 rounded-3xl p-6 sm:p-8 flex items-center justify-between">
+          <div>
+            <span class="text-base font-bold text-rose-800 uppercase tracking-wide">Heart Rate (दिल की धड़कन)</span>
+            <div class="flex items-baseline gap-3 mt-2">
+              <span id="liveBpmText" class="text-5xl sm:text-6xl font-black text-rose-900">72</span>
+              <span class="text-2xl font-bold text-rose-700">BPM</span>
+            </div>
+            <p class="text-stone-700 font-semibold text-lg mt-2">🟢 Steady & Normal (60 - 100 range)</p>
+          </div>
+          <div class="w-24 h-24 rounded-full bg-rose-200 flex items-center justify-center text-5xl pulse-heart shadow-sm">
+            ❤️
+          </div>
+        </div>
+
+        <!-- Step Counter Card -->
+        <div class="bg-sky-50 border-2 border-sky-300 rounded-3xl p-6 sm:p-8 flex items-center justify-between">
+          <div>
+            <span class="text-base font-bold text-sky-800 uppercase tracking-wide">Daily Walk (आज के कदम)</span>
+            <div class="flex items-baseline gap-3 mt-2">
+              <span id="liveStepsText" class="text-5xl sm:text-6xl font-black text-sky-900">3,850</span>
+              <span class="text-2xl font-bold text-sky-700">/ 5,000</span>
+            </div>
+            <p class="text-stone-700 font-semibold text-lg mt-2">🚶‍♂️ 2.5 km walked • 1,150 steps left today</p>
+          </div>
+          <div class="w-24 h-24 rounded-full bg-sky-200 flex items-center justify-center text-4xl shadow-sm">
+            👟
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- SECTION 3: EVALUATE BIOMETRICS (Blood Pressure & Sugar) -->
+    <section class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border-2 border-stone-200">
+      <div class="flex items-center gap-3 pb-4 border-b-2 border-stone-100">
+        <span class="text-3xl">🩺</span>
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-extrabold text-stone-900">Check Your BP & Sugar (जांच मूल्यांकन)</h2>
+          <p class="text-stone-600 text-base">Enter numbers from your machine to get immediate, easy-to-understand advice</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-6">
+        
+        <!-- Input Form -->
+        <div class="space-y-6">
+          
+          <!-- Blood Pressure Inputs -->
+          <div class="bg-stone-50 p-5 rounded-2xl border-2 border-stone-200">
+            <label class="block font-bold text-stone-800 text-xl mb-2">Blood Pressure (रक्तचाप)</label>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <span class="text-sm font-semibold text-stone-500">Top / Systolic</span>
+                <input id="bpSysInput" type="number" value="120" min="80" max="220" class="w-full text-center text-3xl font-black p-3 bg-white border-2 border-stone-300 rounded-xl focus:border-emerald-600 outline-none">
+              </div>
+              <div>
+                <span class="text-sm font-semibold text-stone-500">Bottom / Diastolic</span>
+                <input id="bpDiaInput" type="number" value="80" min="40" max="140" class="w-full text-center text-3xl font-black p-3 bg-white border-2 border-stone-300 rounded-xl focus:border-emerald-600 outline-none">
+              </div>
+            </div>
+          </div>
+
+          <!-- Blood Sugar Input -->
+          <div class="bg-stone-50 p-5 rounded-2xl border-2 border-stone-200">
+            <label class="block font-bold text-stone-800 text-xl mb-2">Blood Sugar Level (शुगर mg/dL)</label>
+            <div class="flex gap-4">
+              <input id="sugarInput" type="number" value="110" min="50" max="400" class="w-1/2 text-center text-3xl font-black p-3 bg-white border-2 border-stone-300 rounded-xl focus:border-emerald-600 outline-none">
+              <select id="sugarTiming" class="w-1/2 text-lg font-bold p-3 bg-white border-2 border-stone-300 rounded-xl focus:border-emerald-600 outline-none">
+                <option value="fasting">Fasting (खाली पेट)</option>
+                <option value="post_meal">After Meal (खाने के बाद)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- EVALUATE BUTTON -->
+          <button onclick="evaluateBiometrics()" class="elder-btn w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-2xl rounded-2xl shadow-md flex items-center justify-center gap-3">
+            <span>🔍</span>
+            <span>Check My Health Status Now</span>
+          </button>
+
+        </div>
+
+        <!-- Evaluation Results Display Card -->
+        <div id="evaluationResultCard" class="bg-emerald-50 border-3 border-emerald-500 rounded-3xl p-6 sm:p-8 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-base font-extrabold text-emerald-800 uppercase tracking-wider">Health Evaluation Result</span>
+              <span id="evalBadge" class="bg-emerald-200 text-emerald-900 font-extrabold text-lg px-4 py-1.5 rounded-full">✅ Normal & Healthy</span>
+            </div>
+            
+            <h3 id="evalTitle" class="text-2xl sm:text-3xl font-black text-emerald-950 mt-2">Everything Looks Good Today!</h3>
+            <p id="evalMessage" class="text-stone-800 text-lg mt-3 leading-relaxed">
+              Your Blood Pressure (120/80) and Sugar (110 mg/dL) are in the ideal healthy range. Continue with your normal routine, drink plenty of water, and stay active.
+            </p>
+          </div>
+
+          <!-- Ask Sarvam AI explanation button -->
+          <div class="mt-6 pt-4 border-t-2 border-emerald-200">
+            <button onclick="explainWithSarvamAI()" class="elder-btn w-full bg-white text-emerald-900 hover:bg-emerald-100 font-bold text-lg px-6 py-3 rounded-xl border border-emerald-300 flex items-center justify-center gap-2 shadow-sm">
+              <span>🤖</span>
+              <span>Listen to AI Doctor's Voice Explanation</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- SECTION 4: WEEKLY HEALTH & MEDICATION TRACKER (7-Day Averages) -->
+    <section class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border-2 border-stone-200">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b-2 border-stone-100 gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">📊</span>
+          <div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-stone-900">Weekly Health Tracker (साप्ताहिक रिकॉर्ड)</h2>
+            <p class="text-stone-600 text-base">Progress across Monday to Sunday with weekly averages</p>
+          </div>
+        </div>
+        <span class="bg-stone-100 text-stone-800 font-bold px-4 py-2 rounded-xl text-base">This Week's Score: 94% Perfect</span>
+      </div>
+
+      <!-- 7-Day Visual Progress Row -->
+      <div class="grid grid-cols-7 gap-2 sm:gap-4 text-center mt-6">
+        
+        <div class="bg-stone-50 border-2 border-emerald-500 rounded-2xl p-3">
+          <span class="text-xs sm:text-sm font-bold text-stone-500">MON</span>
+          <div class="text-2xl sm:text-3xl mt-1">✅</div>
+          <span class="text-xs sm:text-sm font-extrabold text-emerald-800 block mt-1">100%</span>
+        </div>
+
+        <div class="bg-stone-50 border-2 border-emerald-500 rounded-2xl p-3">
+          <span class="text-xs sm:text-sm font-bold text-stone-500">TUE</span>
+          <div class="text-2xl sm:text-3xl mt-1">✅</div>
+          <span class="text-xs sm:text-sm font-extrabold text-emerald-800 block mt-1">100%</span>
+        </div>
+
+        <div class="bg-stone-50 border-2 border-emerald-500 rounded-2xl p-3">
+          <span class="text-xs sm:text-sm font-bold text-stone-500">WED</span>
+          <div class="text-2xl sm:text-3xl mt-1">✅</div>
+          <span class="text-xs sm:text-sm font-extrabold text-emerald-800 block mt-1">100%</span>
+        </div>
+
+        <div class="bg-stone-50 border-2 border-emerald-500 rounded-2xl p-3">
+          <span class="text-xs sm:text-sm font-bold text-stone-500">THU</span>
+          <div class="text-2xl sm:text-3xl mt-1">✅</div>
+          <span class="text-xs sm:text-sm font-extrabold text-emerald-800 block mt-1">100%</span>
+        </div>
+
+        <div class="bg-stone-50 border-2 border-emerald-500 rounded-2xl p-3">
+          <span class="text-xs sm:text-sm font-bold text-stone-500">FRI</span>
+          <div class="text-2xl sm:text-3xl mt-1">✅</div>
+          <span class="text-xs sm:text-sm font-extrabold text-emerald-800 block mt-1">100%</span>
+        </div>
+
+        <div class="bg-stone-50 border-2 border-amber-400 rounded-2xl p-3">
+          <span class="text-xs sm:text-sm font-bold text-stone-500">SAT</span>
+          <div class="text-2xl sm:text-3xl mt-1">⚠️</div>
+          <span class="text-xs sm:text-sm font-extrabold text-amber-800 block mt-1">66%</span>
+        </div>
+
+        <div class="bg-emerald-100 border-2 border-emerald-600 rounded-2xl p-3 ring-2 ring-emerald-400">
+          <span class="text-xs sm:text-sm font-bold text-emerald-950">TODAY</span>
+          <div class="text-2xl sm:text-3xl mt-1">⏳</div>
+          <span class="text-xs sm:text-sm font-extrabold text-emerald-900 block mt-1">In Progress</span>
+        </div>
+
+      </div>
+
+      <!-- Weekly Averages Summary Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mt-8">
+        
+        <div class="bg-stone-50 border-2 border-stone-200 p-5 rounded-2xl">
+          <span class="text-sm font-bold text-stone-500 uppercase">Medication Taken</span>
+          <div class="text-3xl sm:text-4xl font-black text-emerald-700 mt-1">94%</div>
+          <span class="text-sm font-semibold text-stone-600">19 of 20 doses on time</span>
+        </div>
+
+        <div class="bg-stone-50 border-2 border-stone-200 p-5 rounded-2xl">
+          <span class="text-sm font-bold text-stone-500 uppercase">Avg Blood Pressure</span>
+          <div class="text-3xl sm:text-4xl font-black text-stone-900 mt-1">122 / 82</div>
+          <span class="text-sm font-semibold text-emerald-600">✓ Well Controlled</span>
+        </div>
+
+        <div class="bg-stone-50 border-2 border-stone-200 p-5 rounded-2xl">
+          <span class="text-sm font-bold text-stone-500 uppercase">Avg Blood Sugar</span>
+          <div class="text-3xl sm:text-4xl font-black text-stone-900 mt-1">114</div>
+          <span class="text-sm font-semibold text-emerald-600">mg/dL • Normal Fasting</span>
+        </div>
+
+        <div class="bg-stone-50 border-2 border-stone-200 p-5 rounded-2xl">
+          <span class="text-sm font-bold text-stone-500 uppercase">Avg Daily Steps</span>
+          <div class="text-3xl sm:text-4xl font-black text-sky-800 mt-1">4,210</div>
+          <span class="text-sm font-semibold text-sky-600">steps/day • Active</span>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- SECTION 5: INBUILT GPS SAFE-ZONE TRACKER ("Where Am I?") -->
+    <section class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border-2 border-stone-200">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b-2 border-stone-100 gap-3">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">📍</span>
+          <div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-stone-900">GPS Tracker & Safe Zone (सुरक्षित स्थान)</h2>
+            <p class="text-stone-600 text-base">Always know where you are so you never get lost</p>
+          </div>
+        </div>
+        <div class="bg-emerald-100 text-emerald-950 font-bold px-4 py-2 rounded-2xl text-lg flex items-center gap-2">
+          <span>🛡️</span>
+          <span>SAFE ZONE: AT HOME</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        
+        <!-- Action Buttons -->
+        <div class="space-y-4">
+          <div class="bg-stone-50 p-5 rounded-2xl border-2 border-stone-200">
+            <span class="text-sm font-bold text-stone-500 uppercase">Current Address</span>
+            <p id="currentAddressText" class="text-xl font-bold text-stone-900 mt-1">
+              Flat 302, Shanti Vihar, Jayanagar 4th Block, Bengaluru - 560011
+            </p>
+            <p class="text-sm text-stone-500 mt-1">Coordinates: 12.9250° N, 77.5938° E</p>
+          </div>
+
+          <!-- BIG "WHERE AM I?" BUTTON -->
+          <button onclick="speakCurrentLocation()" class="elder-btn w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-xl rounded-2xl shadow-md flex items-center justify-center gap-3">
+            <span>📢</span>
+            <span>Where Am I Right Now? (Speak Aloud)</span>
+          </button>
+
+          <!-- BIG "DIRECTIONS HOME" BUTTON -->
+          <button onclick="navigateHome()" class="elder-btn w-full bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xl rounded-2xl shadow-md flex items-center justify-center gap-3">
+            <span>🧭</span>
+            <span>Show Directions To Home</span>
+          </button>
+
+          <!-- CALL FAMILY HELPLINE -->
+          <div class="bg-amber-50 p-4 rounded-2xl border border-amber-300 flex items-center justify-between">
+            <div>
+              <span class="text-xs font-bold text-amber-800 uppercase">Family Caregiver</span>
+              <p class="font-bold text-stone-900 text-lg">Amit (Son): +91 98765 43210</p>
+            </div>
+            <a href="tel:9876543210" class="elder-btn bg-amber-600 text-white px-5 py-2.5 rounded-xl font-bold text-lg flex items-center gap-2">
+              <span>📞</span> Call
+            </a>
+          </div>
+        </div>
+
+        <!-- Interactive Map Display -->
+        <div class="lg:col-span-2">
+          <div id="map" class="w-full h-80 sm:h-96 rounded-2xl border-2 border-stone-300 shadow-inner overflow-hidden relative z-1" style="isolation: isolate;"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- SECTION 6: SARVAM AI INDIC COMPANION (Ask in Any Indian Language) -->
+    <section class="bg-stone-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl">
+      <div class="flex items-center gap-3 pb-4 border-b border-stone-800">
+        <span class="text-3xl">🎙️</span>
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-extrabold text-white">Sarvam AI Health Assistant</h2>
+          <p class="text-stone-400 text-base">Ask any question in Hindi, English, Tamil, Telugu, or Bengali</p>
+        </div>
+      </div>
+
+      <div class="mt-6 space-y-4">
+        <!-- Quick Question Chips -->
+        <div class="flex flex-wrap gap-2">
+          <button onclick="askPresetQuestion('Mera blood pressure 120/80 hai, kya yeh theek hai?')" class="bg-stone-800 hover:bg-stone-700 text-stone-200 text-sm sm:text-base font-semibold px-4 py-2 rounded-xl border border-stone-700">
+            💬 "Mera BP 120/80 hai, kya yeh theek hai?"
+          </button>
+          <button onclick="askPresetQuestion('Sugar patient ko shaam ko kya snack khana chahiye?')" class="bg-stone-800 hover:bg-stone-700 text-stone-200 text-sm sm:text-base font-semibold px-4 py-2 rounded-xl border border-stone-700">
+            💬 "Sugar me shaam ko kya snack khayein?"
+          </button>
+          <button onclick="askPresetQuestion('Did I take all my medicines today?')" class="bg-stone-800 hover:bg-stone-700 text-stone-200 text-sm sm:text-base font-semibold px-4 py-2 rounded-xl border border-stone-700">
+            💬 "Did I take my medicines today?"
+          </button>
+        </div>
+
+        <!-- Input & Ask Button -->
+        <div class="flex flex-col sm:flex-row gap-3">
+          <input id="aiQuestionInput" type="text" placeholder="Type or ask your health question here..." class="flex-1 text-stone-900 text-xl font-medium p-4 rounded-2xl outline-none bg-white">
+          <button onclick="askSarvamAI()" class="elder-btn bg-emerald-500 hover:bg-emerald-600 text-stone-950 font-black text-xl px-8 rounded-2xl shadow-lg flex items-center justify-center gap-2 shrink-0">
+            <span>Ask AI</span>
+            <span>👉</span>
+          </button>
+        </div>
+
+        <!-- AI Answer Box -->
+        <div id="aiReplyBox" class="hidden bg-stone-800 border border-stone-700 rounded-2xl p-6 mt-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-emerald-400 font-bold text-base uppercase tracking-wider">Sarvam AI Response</span>
+            <button onclick="speakText(document.getElementById('aiReplyText').innerText)" class="text-sm bg-stone-700 hover:bg-stone-600 text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
+              <span>🔊</span> Listen
+            </button>
+          </div>
+          <p id="aiReplyText" class="text-stone-100 text-lg sm:text-xl leading-relaxed whitespace-pre-wrap"></p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Live JavaScript Functionality -->
+  <script>
+    // 1. Live Clock
+    function updateClock() {
+      const now = new Date();
+      const options = { hour: '2-digit', minute: '2-digit', hour12: true };
+      const clockEl = document.getElementById('liveClock');
+      if (clockEl) {
+        clockEl.innerText = now.toLocaleTimeString([], options) + ' • ' + now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+      }
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // 2. Font Size Scaling
+    let currentScale = 1.0;
+    function changeFontSize(scale) {
+      currentScale = scale;
+      document.documentElement.style.setProperty('--font-scale', scale);
+    }
+
+    // 3. Medicine Tracking
+    const medsState = {
+      morning: true,
+      afternoon: true,
+      night: false
+    };
+
+    function updateMedUI() {
+      const morningCard = document.getElementById('med-card-morning');
+      const morningBtn = document.getElementById('btn-med-morning');
+      if (medsState.morning) {
+        morningCard.className = "rounded-2xl border-2 border-emerald-500 bg-emerald-50/50 p-6 flex flex-col justify-between shadow-sm";
+        morningBtn.className = "elder-btn mt-6 w-full font-bold text-lg rounded-xl flex items-center justify-center gap-2 bg-emerald-600 text-white shadow";
+        morningBtn.innerHTML = "<span>✅</span><span>TAKEN AT 8:15 AM</span>";
+      } else {
+        morningCard.className = "rounded-2xl border-2 border-stone-300 bg-stone-50 p-6 flex flex-col justify-between shadow-sm";
+        morningBtn.className = "elder-btn mt-6 w-full font-bold text-lg rounded-xl flex items-center justify-center gap-2 bg-stone-200 text-stone-800 shadow";
+        morningBtn.innerHTML = "<span>👉</span><span>TAP TO MARK TAKEN</span>";
+      }
+
+      const afternoonCard = document.getElementById('med-card-afternoon');
+      const afternoonBtn = document.getElementById('btn-med-afternoon');
+      if (medsState.afternoon) {
+        afternoonCard.className = "rounded-2xl border-2 border-emerald-500 bg-emerald-50/50 p-6 flex flex-col justify-between shadow-sm";
+        afternoonBtn.className = "elder-btn mt-6 w-full font-bold text-lg rounded-xl flex items-center justify-center gap-2 bg-emerald-600 text-white shadow";
+        afternoonBtn.innerHTML = "<span>✅</span><span>TAKEN AT 1:20 PM</span>";
+      } else {
+        afternoonCard.className = "rounded-2xl border-2 border-stone-300 bg-stone-50 p-6 flex flex-col justify-between shadow-sm";
+        afternoonBtn.className = "elder-btn mt-6 w-full font-bold text-lg rounded-xl flex items-center justify-center gap-2 bg-stone-200 text-stone-800 shadow";
+        afternoonBtn.innerHTML = "<span>👉</span><span>TAP TO MARK TAKEN</span>";
+      }
+
+      const nightCard = document.getElementById('med-card-night');
+      const nightBtn = document.getElementById('btn-med-night');
+      if (medsState.night) {
+        nightCard.className = "rounded-2xl border-2 border-emerald-500 bg-emerald-50/50 p-6 flex flex-col justify-between shadow-sm";
+        nightBtn.className = "elder-btn mt-6 w-full font-bold text-lg rounded-xl flex items-center justify-center gap-2 bg-emerald-600 text-white shadow";
+        nightBtn.innerHTML = "<span>✅</span><span>TAKEN FOR NIGHT</span>";
+      } else {
+        nightCard.className = "rounded-2xl border-2 border-amber-400 bg-amber-50/60 p-6 flex flex-col justify-between shadow-md";
+        nightBtn.className = "elder-btn mt-6 w-full font-bold text-xl rounded-xl flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white shadow-lg";
+        nightBtn.innerHTML = "<span>👉</span><span>TAP TO MARK TAKEN</span>";
+      }
+
+      const takenCount = Object.values(medsState).filter(Boolean).length;
+      document.getElementById('medProgressText').innerText = `${takenCount} of 3 Taken Today`;
+    }
+
+    function toggleMed(timeKey) {
+      medsState[timeKey] = !medsState[timeKey];
+      updateMedUI();
+      if (medsState[timeKey]) {
+        speakText(`Shabaash! Aapne apni ${timeKey} ki dawaai le li hai.`);
+      }
+    }
+
+    // 4. Biometric Evaluation Engine
+    function evaluateBiometrics() {
+      const sys = parseInt(document.getElementById('bpSysInput').value) || 120;
+      const dia = parseInt(document.getElementById('bpDiaInput').value) || 80;
+      const sugar = parseInt(document.getElementById('sugarInput').value) || 110;
+      const timing = document.getElementById('sugarTiming').value;
+
+      const card = document.getElementById('evaluationResultCard');
+      const badge = document.getElementById('evalBadge');
+      const title = document.getElementById('evalTitle');
+      const message = document.getElementById('evalMessage');
+
+      let isBpHigh = sys >= 140 || dia >= 90;
+      let isBpLow = sys < 90 || dia < 60;
+      let isSugarHigh = timing === 'fasting' ? sugar > 125 : sugar > 180;
+      let isSugarLow = sugar < 70;
+
+      if (isBpHigh || isSugarHigh) {
+        card.className = "bg-amber-50 border-3 border-amber-500 rounded-3xl p-6 sm:p-8 flex flex-col justify-between";
+        badge.className = "bg-amber-200 text-amber-900 font-extrabold text-lg px-4 py-1.5 rounded-full";
+        badge.innerText = "⚠️ Attention Needed (ध्यान दें)";
+        title.className = "text-2xl sm:text-3xl font-black text-amber-950 mt-2";
+        title.innerText = "Slightly Elevated Readings";
+        
+        let advise = [];
+        if (isBpHigh) advise.push(`Blood Pressure (${sys}/${dia}) is higher than usual.`);
+        if (isSugarHigh) advise.push(`Blood Sugar (${sugar} mg/dL) is on the higher side.`);
+        advise.push("Please sit down comfortably, drink a glass of fresh water, and avoid salty or sweet food for now. If it stays high, notify Amit or Dr. Sharma.");
+        message.innerText = advise.join(" ");
+        speakText("Dhayan dein, aapka reading thoda zyada aaya hai. Kripya aaram karein aur paani piyein.");
+      } else if (isBpLow || isSugarLow) {
+        card.className = "bg-rose-50 border-3 border-rose-500 rounded-3xl p-6 sm:p-8 flex flex-col justify-between";
+        badge.className = "bg-rose-200 text-rose-900 font-extrabold text-lg px-4 py-1.5 rounded-full";
+        badge.innerText = "⚠️ Low Reading (कम स्तर)";
+        title.className = "text-2xl sm:text-3xl font-black text-rose-950 mt-2";
+        title.innerText = "Readings Are Lower Than Normal";
+        message.innerText = "Your reading is below standard levels. Please sit down and have a light snack or juice, and rest your feet.";
+        speakText("Aapka reading normal se thoda kam hai. Thoda juice ya halka nashta karein.");
+      } else {
+        card.className = "bg-emerald-50 border-3 border-emerald-500 rounded-3xl p-6 sm:p-8 flex flex-col justify-between";
+        badge.className = "bg-emerald-200 text-emerald-900 font-extrabold text-lg px-4 py-1.5 rounded-full";
+        badge.innerText = "✅ Normal & Healthy";
+        title.className = "text-2xl sm:text-3xl font-black text-emerald-950 mt-2";
+        title.innerText = "Everything Looks Great!";
+        message.innerText = `Your Blood Pressure (${sys}/${dia}) and Sugar (${sugar} mg/dL) are in the healthy green zone. Keep up the good work!`;
+        speakText("Badhai ho! Aapka blood pressure aur sugar bilkul normal aur swasth hai.");
+      }
+    }
+
+    // 5. Speech Synthesis (Text-to-Speech)
+    function speakText(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.9;
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    function readDailySummaryAloud() {
+      const summary = "Namaste Ramesh ji. Today you have taken 2 out of 3 medicines. Your night tablet is scheduled at 9 PM. Your heart rate is 72 beats per minute, which is steady. You have walked 3,850 steps today. You are safe at home.";
+      speakText(summary);
+    }
+
+    function explainWithSarvamAI() {
+      const explanation = "Doctor Sharma's guidelines say: Your morning blood pressure reading is stable. Remember to take your night atorvastatin tablet after dinner, and take a light 15-minute evening walk in the society park.";
+      speakText(explanation);
+    }
+
+    // 6. Emergency SOS Alert
+    function triggerEmergencySOS() {
+      const confirmSOS = confirm("🚨 ARE YOU SURE YOU WANT TO SEND AN EMERGENCY ALERT TO YOUR FAMILY?");
+      if (confirmSOS) {
+        speakText("Emergency alert sent. Location coordinates shared with your son Amit.");
+        alert("🚨 Emergency Alert Dispatched!\n\nSMS & Call triggered to Amit (+91 98765 43210)\nCurrent Location: Shanti Vihar, Jayanagar, Bengaluru\nCoordinates: 12.9250 N, 77.5938 E");
+      }
+    }
+
+    // 7. GPS & Map Setup (Leaflet)
+    let map, marker, circle;
+    const homeCoords = [12.9250, 77.5938];
+
+    function initMap() {
+      try {
+        map = L.map('map', { zoomControl: true }).setView(homeCoords, 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        circle = L.circle(homeCoords, {
+          color: '#10b981',
+          fillColor: '#34d399',
+          fillOpacity: 0.2,
+          radius: 400
+        }).addTo(map);
+        circle.bindPopup("<b>Home Safe Zone (सुरक्षित घेरा)</b><br>400m perimeter around residence");
+
+        marker = L.marker(homeCoords).addTo(map);
+        marker.bindPopup("<b>You Are Here (आप यहाँ हैं)</b><br>Flat 302, Shanti Vihar").openPopup();
+      } catch (e) {
+        console.warn("Map initialization note:", e);
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      updateMedUI();
+    });
+
+    function speakCurrentLocation() {
+      speakText("You are currently at home in Shanti Vihar, Jayanagar 4th Block, Bengaluru. You are safe inside your home green zone.");
+    }
+
+    function navigateHome() {
+      speakText("Showing directions to home. You are already at your residence.");
+      if (map) {
+        map.setView(homeCoords, 17);
+        marker.openPopup();
+      }
+    }
+
+    // 8. Sarvam AI Question Handler
+    function askPresetQuestion(q) {
+      document.getElementById('aiQuestionInput').value = q;
+      askSarvamAI();
+    }
+
+    async function askSarvamAI() {
+      const q = document.getElementById('aiQuestionInput').value.trim();
+      if (!q) return;
+
+      const replyBox = document.getElementById('aiReplyBox');
+      const replyText = document.getElementById('aiReplyText');
+      replyBox.classList.remove('hidden');
+      replyText.innerText = "Soch rahe hain... (Consulting Sarvam AI)...";
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: q })
+        }).catch(() => null);
+
+        if (res && res.ok) {
+          const data = await res.json();
+          replyText.innerText = data.reply;
+        } else {
+          let responseMap = {
+            bp: "Aapka 120/80 Blood Pressure bilkul aadarsh (ideal) hai! Iska matlab aapka dil achhi tarah kaam kar raha hai. Zyada namak na khayein aur roz 20 minute ghumna jaari rakhein.",
+            sugar: "Sugar ke marij shaam ko bhune hue chane (roasted chana), makhane, ya ek cup bina cheeni ki chai ke saath Marie biscuit le sakte hain. Meetha aur deep fried nashta na lein.",
+            default: "Namaste Ramesh ji! Maine aapka sawal dekha. Aapki dono subah aur dopahar ki dawaiyan li ja chuki hain. Raat ki davaai 9 baje dinner ke baad lena yaad rakhein. Khush rahein aur aaraam karein."
+          };
+          let answer = responseMap.default;
+          if (q.toLowerCase().includes('bp') || q.toLowerCase().includes('pressure')) answer = responseMap.bp;
+          if (q.toLowerCase().includes('sugar') || q.toLowerCase().includes('snack')) answer = responseMap.sugar;
+          
+          replyText.innerText = answer;
+        }
+        speakText(replyText.innerText);
+      } catch (err) {
+        replyText.innerText = "Namaste Ramesh ji! Aapka health status accha hai. Raat ki davaai 9 PM ko lein.";
+        speakText(replyText.innerText);
+      }
+    }
+  </script>
+</body>
+</html>
